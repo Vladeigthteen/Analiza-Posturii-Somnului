@@ -18,19 +18,19 @@ This project is a Streamlit-based application for analyzing sleep posture data. 
 
 2. **Run the App Automatically**:
 
-Simply double-click the `run.bat` file located in the project directory.  
-The script will:
-1. Create a virtual environment (`venv`) if it doesn't already exist.
-2. Install the required dependencies from `requirements.txt`.
-3. Launch the Streamlit app in your default web browser.
+    Simply double-click the `run.bat` file located in the project directory.  
+    The script will:
+    1. Create a virtual environment (`venv`) if it doesn't already exist.
+    2. Install the required dependencies from `requirements.txt`.
+    3. Launch the Streamlit app in your default web browser.
 
 3. **What Happens in the Background**:
 
-The `run.bat` file automates the following steps:
-1. Checks if a virtual environment exists. If not, it creates one.
-2. Activates the virtual environment.
-3. Installs all required Python packages listed in `requirements.txt`.
-4. Runs the Streamlit app (`analiza.py`).
+    The `run.bat` file automates the following steps:
+    1. Checks if a virtual environment exists. If not, it creates one.
+    2. Activates the virtual environment.
+    3. Installs all required Python packages listed in `requirements.txt`.
+    4. Runs the Streamlit app (`analiza.py`).
 
 ---
 
