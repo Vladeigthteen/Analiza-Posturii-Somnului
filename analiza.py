@@ -1,37 +1,218 @@
 import os
 import numpy as np
+import pandas as pd
 import streamlit as st
+import altair as alt
 import matplotlib.pyplot as plt
+import seaborn as sns
 from scipy.fft import fft
 from scipy.signal import correlate
 
+# ======== UI & Stilizare ========
 plt.rcParams.update({
-    'axes.facecolor': '#0e1117',  # Background color for the plot area
-    'axes.edgecolor': 'white',   # Edge color for the plot area
-    'axes.labelcolor': 'white',  # Label color for axes
-    'xtick.color': 'white',      # Tick color for x-axis
-    'ytick.color': 'white',      # Tick color for y-axis
-    'figure.facecolor': '#0e1117',  # Background color for the figure
-    'figure.edgecolor': '#0e1117',  # Edge color for the figure
-    'text.color': 'white',       # Text color
-    'grid.color': 'grey',        # Grid line color
-    'grid.alpha': 0.8            # Grid line transparency
+    'axes.facecolor': '#0e1117',
+    'axes.edgecolor': 'white',
+    'axes.labelcolor': 'white',
+    'xtick.color': 'white',
+    'ytick.color': 'white',
+    'figure.facecolor': '#0e1117',
+    'figure.edgecolor': '#0e1117',
+    'text.color': 'white',
+    'grid.color': 'grey',
+    'grid.alpha': 0.8
 })
 
-# Calea către experiment
+# ======== CĂI BAZĂ ========
 base_path = 'Dataset'
+exp_path = os.path.join(base_path, 'experiment-i')
+subject_info_path = os.path.join(exp_path, 'Date.xlsx')
 
-# Toți subiecții
-subjects = sorted([d for d in os.listdir(base_path)
-                  if os.path.isdir(os.path.join(base_path, d))])
+frame_height = 32
+frame_width = 64
 
+# ======== INTERFAȚĂ ========
 st.title("🔬 Analiza posturii somnului")
 
-# Selectare subiect și fișier
-selected_subject = st.selectbox("Alege experiment: ", subjects)
+# ======== GRAFIC COMPARATIV ÎNTRE SUBIECȚI & POSTURI ========
+if os.path.exists(subject_info_path):
+   
+    df_info = pd.read_excel(subject_info_path, engine='openpyxl')
+    df_info.columns = df_info.columns.str.strip()  # elimină spațiile din capul de tabel
+
+    df_info['S_ID'] = ['S' + str(i+1) for i in range(len(df_info))]
+
+    posturi_map = {
+        1: 'Supine (0°)',
+        2: 'Right (0°)',
+        3: 'Left (0°)',
+        4: 'Right (30°)',
+        5: 'Right (60°)',
+        6: 'Left (30°)',
+        7: 'Left (60°)',
+        8: 'Supine',
+        9: 'Supine',
+        10: 'Supine',
+        11: 'Supine',
+        12: 'Supine',
+        13: 'Right Fetus',
+        14: 'Left Fetus',
+        15: 'Supine (30° incline)',
+        16: 'Supine (45° incline)',
+        17: 'Supine (60° incline)',
+    }
+
+    results = []
+
+    for sid in df_info['S_ID']:
+        age = df_info[df_info['S_ID'] == sid]['Age'].values[0]
+        subj_path = os.path.join(exp_path, sid)
+        if not os.path.isdir(subj_path):
+            continue
+
+        for i in range(1, 18):
+            fpath = os.path.join(subj_path, f"{i}.txt")
+            if not os.path.isfile(fpath):
+                continue
+            try:
+                data = np.loadtxt(fpath)
+                frames = data.reshape((-1, frame_height, frame_width))
+                results.append({
+                    "Subiect": sid,
+                    "Age": age,
+                    "Postura": posturi_map[i],
+                    "Media Presiunii": np.mean(frames),
+                    "Varianță": np.var(frames),
+                    "Presiune Totală": np.sum(frames)
+                })
+            except:
+                continue
+
+    df_results = pd.DataFrame(results)
+
+    st.subheader("📊 Statistici pe toți subiecții din primul experiment")
+    st.dataframe(df_results)
+
+    sel_postura = st.selectbox("Selectează postură pentru grafic:", sorted(df_results['Postura'].unique()))
+    df_filtrat = df_results[df_results['Postura'] == sel_postura]
+
+    st.subheader(f"📈 Grafic interactiv: Media presiunii în funcție de vârstă - {sel_postura}")
+    
+    df_chart = df_filtrat[['Subiect', 'Age', 'Media Presiunii']].sort_values(by='Age')
+
+    chart = alt.Chart(df_chart).mark_bar(color='deepskyblue').encode(
+        x=alt.X('Subiect:N', title='Subiect'),
+        y=alt.Y('Media Presiunii:Q', title='Media Presiunii'),
+        tooltip=['Subiect', 'Age', 'Media Presiunii']
+    ).properties(
+        width=700,
+        height=400,
+        title=f'Media presiunii per subiect – Postură: {sel_postura}'
+    )
+
+    st.altair_chart(chart, use_container_width=True)
+
+
+
+    st.subheader("📊 Media presiunii pentru fiecare postură")
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    sns.barplot(data=df_results, x='Postura', y='Media Presiunii', ax=ax)
+    plt.xticks(rotation=45, ha='right')
+    st.pyplot(fig)
+
+
+    st.subheader("📊 Varianța presiunii pentru fiecare postură")
+
+    fig_var, ax_var = plt.subplots(figsize=(10, 5))
+    sns.barplot(data=df_results, x='Postura', y='Varianță', ax=ax_var, palette='magma')
+    ax_var.set_title("Varianța presiunii pe postură", fontsize=14)
+    ax_var.set_xlabel("Postură")
+    ax_var.set_ylabel("Varianță")
+    plt.xticks(rotation=45, ha='right')
+    ax_var.grid(True, linestyle='--', alpha=0.5)
+    st.pyplot(fig_var)
+
+
+
+    # ======== ANALIZĂ EXPERIMENTUL 2 (Air_Mat vs Sponge_Mat) ========
+st.title("🛏️ Analiza comparativă - Saltele (Experimentul 2)")
+
+exp2_path = os.path.join(base_path, 'experiment-ii')
+frame_height, frame_width = 27, 64
+
+if os.path.exists(exp2_path):
+    results = []
+    subjects = sorted([d for d in os.listdir(exp2_path) if os.path.isdir(os.path.join(exp2_path, d))])
+
+    for subject in subjects:
+        subject_path = os.path.join(exp2_path, subject)
+        for mat_type in ["Air_Mat", "Sponge_Mat"]:
+            mat_path = os.path.join(subject_path, mat_type)
+            if not os.path.isdir(mat_path):
+                continue
+            for file in os.listdir(mat_path):
+                if file.endswith(".txt") and "Matrix" in file:
+                    posture = file.replace(".txt", "").split("_")[-1]  # B1, C2, etc.
+                    full_path = os.path.join(mat_path, file)
+                    try:
+                        data = np.loadtxt(full_path)
+                        frames = data.reshape(-1, frame_height, frame_width)
+                        results.append({
+                            "Subiect": subject,
+                            "Saltea": mat_type.replace("_Mat", ""),
+                            "Poziție": posture,
+                            "Media Presiunii": np.mean(frames),
+                            "Varianță": np.var(frames),
+                            "Presiune Totală": np.sum(frames)
+                        })
+                    except Exception as e:
+                        st.warning(f"Eroare la {full_path}: {e}")
+
+    df_exp2 = pd.DataFrame(results)
+
+    st.subheader("📋 Tabel - Presiune pe fiecare poziție și saltea")
+    st.dataframe(df_exp2)
+
+    st.subheader("📈 Compară media presiunii între saltele")
+    sel_mat = st.selectbox("Selectează tip saltea:", sorted(df_exp2['Saltea'].unique()))
+    df_sel = df_exp2[df_exp2['Saltea'] == sel_mat]
+
+    fig3, ax3 = plt.subplots(figsize=(10, 5))
+    df_grouped = df_sel.groupby('Poziție')['Media Presiunii'].mean().reset_index()
+    ax3.bar(df_grouped['Poziție'], df_grouped['Media Presiunii'], color='skyblue')
+    ax3.set_title(f"Media presiunii per postură ({sel_mat})", fontsize=14)
+    ax3.set_xlabel("Poziție")
+    ax3.set_ylabel("Media presiunii")
+    ax3.grid(True, linestyle='--', alpha=0.5)
+    st.pyplot(fig3)
+     
+    st.subheader("📊 Varianța presiunii pe poziții – comparativ între saltele")
+
+    for saltea in sorted(df_exp2['Saltea'].unique()):
+        df_saltea = df_exp2[df_exp2['Saltea'] == saltea]
+        fig_var2, ax_var2 = plt.subplots(figsize=(10, 5))
+        sns.barplot(data=df_saltea, x='Poziție', y='Varianță', ax=ax_var2, palette='coolwarm')
+        ax_var2.set_title(f"Varianța presiunii – Saltea: {saltea}", fontsize=14)
+        ax_var2.set_xlabel("Poziție")
+        ax_var2.set_ylabel("Varianță")
+        plt.xticks(rotation=45, ha='right')
+        ax_var2.grid(True, linestyle='--', alpha=0.5)
+        st.pyplot(fig_var2)
+
+else:
+    st.warning("Folderul pentru experimentul 2 nu a fost găsit.")
+
+
+   
+
+
+
+
+# ======== ANALIZĂ FIȘIER INDIVIDUAL (CODUL TĂU ORIGINAL) ========
+subjects = sorted([d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))])
+selected_subject = st.selectbox("Alege experiment:", subjects)
 subject_path = os.path.join(base_path, selected_subject)
 
-# Listăm fișierele .txt
 data_files = []
 for root, _, files in os.walk(subject_path):
     for file in files:
@@ -39,7 +220,7 @@ for root, _, files in os.walk(subject_path):
             data_files.append(os.path.join(root, file))
 
 if data_files:
-    selected_file = st.selectbox("Alege fisier: ", data_files)
+    selected_file = st.selectbox("Alege fișier:", data_files)
 
     try:
         data = np.loadtxt(selected_file)
@@ -53,38 +234,34 @@ if data_files:
         ax.set_xlabel("Timp", fontsize=12)
         ax.set_ylabel("Amplitudine", fontsize=12)
         ax.grid(True, linestyle='--', alpha=0.5)
-        ax.legend(loc="upper right", fontsize=10)
         ax.axhline(y=np.mean(data), color='red', linestyle='--', label="Media")
         ax.legend()
         st.pyplot(fig)
 
-        # Statistici
         st.write("**Media:**", float(np.mean(data)))
         st.write("**Varianța:**", float(np.var(data)))
 
-        # Autocorelație
         st.subheader("🔁 Autocorelație")
         autocor = correlate(data, data, mode='full') / len(data)
         fig1, ax1 = plt.subplots()
         ax1.plot(autocor, label="Autocorelație", color="magenta", linewidth=1.5)
         ax1.set_title("Autocorelație", fontsize=14, fontweight='bold')
-        ax1.set_xlabel("Lag", fontsize=12)
-        ax1.set_ylabel("Corelație", fontsize=12)
+        ax1.set_xlabel("Lag")
+        ax1.set_ylabel("Corelație")
         ax1.grid(True, linestyle='--', alpha=0.5)
-        ax1.legend(loc="upper right", fontsize=10)
+        ax1.legend()
         st.pyplot(fig1)
 
-        # FFT
         st.subheader("📈 Transformata Fourier (FFT)")
         Y = fft(data)
         f = np.fft.fftfreq(len(data), d=1)
         fig2, ax2 = plt.subplots()
         ax2.plot(f[:len(data)//2], np.abs(Y[:len(data)//2]), label="Spectru FFT", color="lime", linewidth=1.5)
         ax2.set_title("Spectru FFT", fontsize=14, fontweight='bold')
-        ax2.set_xlabel("Frecvență (Hz)", fontsize=12)
-        ax2.set_ylabel("Amplitudine", fontsize=12)
+        ax2.set_xlabel("Frecvență (Hz)")
+        ax2.set_ylabel("Amplitudine")
         ax2.grid(True, linestyle='--', alpha=0.5)
-        ax2.legend(loc="upper right", fontsize=10)
+        ax2.legend()
         st.pyplot(fig2)
 
     except Exception as e:
@@ -92,6 +269,7 @@ if data_files:
 else:
     st.warning("Nu s-au găsit fișiere .txt pentru acest subiect.")
 
+# ======== FOOTER ========
 st.markdown(
     """
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
