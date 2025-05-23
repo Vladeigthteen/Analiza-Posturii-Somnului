@@ -7,6 +7,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.fft import fft
 from scipy.signal import correlate
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import LabelEncoder
+
 
 # ======== UI & Stilizare ========
 plt.rcParams.update({
@@ -134,6 +137,41 @@ if os.path.exists(subject_info_path):
 
 
 
+    st.subheader("🔁 Autocorelația presiunii în posturi Supine (Experiment 1)")
+
+    supine_posturi = ['Supine (0°)', 'Supine', 'Supine (30° incline)', 'Supine (45° incline)', 'Supine (60° incline)']
+    df_supine = df_results[df_results['Postura'].isin(supine_posturi)]
+
+    selected_supine = st.selectbox("Alege subiect și postură Supine:", 
+                                   df_supine[['Subiect', 'Postura']].drop_duplicates().apply(lambda x: f"{x['Subiect']} - {x['Postura']}", axis=1))
+
+    sel_sid, sel_pos = selected_supine.split(" - ")
+    index = list(posturi_map.values()).index(sel_pos) + 1  # găsim indexul fișierului (1.txt .. 17.txt)
+
+    fpath = os.path.join(exp_path, sel_sid, f"{index}.txt")
+    try:
+        data = np.loadtxt(fpath)
+        frames = data.reshape((-1, frame_height, frame_width))
+        pressure_over_time = [np.sum(frame) for frame in frames]
+
+        # autocorelație
+        autocor = correlate(pressure_over_time, pressure_over_time, mode='full') / len(pressure_over_time)
+        lags = np.arange(-len(pressure_over_time) + 1, len(pressure_over_time))
+
+        fig_aut, ax_aut = plt.subplots()
+        ax_aut.plot(lags, autocor, color='magenta')
+        ax_aut.set_title(f"Autocorelație - {sel_sid} - {sel_pos}")
+        ax_aut.set_xlabel("Lag (secunde)")
+        ax_aut.set_ylabel("Corelație")
+        ax_aut.grid(True, linestyle='--', alpha=0.5)
+        st.pyplot(fig_aut)
+
+    except Exception as e:
+        st.warning(f"Eroare la citire sau autocorelație: {e}")
+
+
+
+
     # ======== ANALIZĂ EXPERIMENTUL 2 (Air_Mat vs Sponge_Mat) ========
 st.title("🛏️ Analiza comparativă - Saltele (Experimentul 2)")
 
@@ -204,6 +242,31 @@ else:
 
 
    
+
+# Codificăm poziția (ex: B1, C2...) ca număr
+df_exp2['Poziție_Idx'] = LabelEncoder().fit_transform(df_exp2['Poziție'])
+
+# Alegem saltea
+saltea = 'Air'
+df_saltea = df_exp2[df_exp2['Saltea'] == saltea]
+
+# X = poziția (numeric), y = media presiunii
+X = df_saltea[['Poziție_Idx']]
+y = df_saltea['Media Presiunii']
+
+model = LinearRegression().fit(X, y)
+df_saltea['Pred'] = model.predict(X)
+
+# Grafic
+fig, ax = plt.subplots()
+ax.scatter(X, y, color='cyan', label='Real')
+ax.plot(X, df_saltea['Pred'], color='red', label='Regresie liniară')
+ax.set_title(f"Regresie - Saltea {saltea}")
+ax.set_xlabel("Poziție (index)")
+ax.set_ylabel("Media presiunii")
+ax.legend()
+st.pyplot(fig)
+
 
 
 
